@@ -1,0 +1,44 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "anyworkflow-gemini-gateway",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": true,
+  "routes": [
+    {
+      "pattern": "gemini.any1.tech",
+      "custom_domain": true
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "KEY_POOL",
+        "class_name": "KeyPoolDO"
+      },
+      {
+        "name": "SCHEDULER",
+        "class_name": "SchedulerDO"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "KeyPoolDO",
+        "SchedulerDO"
+      ]
+    }
+  ],
+  "vars": {
+    "GEMINI_API_BASE": "https://generativelanguage.googleapis.com/v1beta",
+    "GITHUB_AGENT_REPO": "ActiveInsighter/Agent-gemeni",
+    "GITHUB_AGENT_WORKFLOW": "gemini-text.yml",
+    "GITHUB_AGENT_REF": "main",
+    "POCKETBASE_URL": "https://pb.any1.tech",
+    "DEFAULT_DECISION_MODEL": "gemini-2.5-flash",
+    "KEY_POOL_RPM_PER_KEY": "15",
+    "KEY_POOL_RPD_PER_KEY": "1500"
+  }
+}
