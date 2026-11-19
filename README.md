@@ -41,6 +41,10 @@
 - `POST /admin/keys/reset`：重置冷却/禁用状态
 - `GET /admin/schedules` / `POST /admin/schedules` / `DELETE /admin/schedules/:id` / `POST /admin/schedules/:id/trigger` / `GET /admin/schedules/runs`
 
+## GitHub Actions 部署
+
+在网关仓库的 Actions Secrets 中配置 `CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID`。启用 Agent 时，再添加对 `ActiveInsighter/Agent-gemeni` 具有 Actions 写权限的 `ACTIONS_TOKEN`。部署时 Wrangler 会将它写入 Worker 的 `GITHUB_ACTIONS_TOKEN` secret。
+
 ## 本地开发与测试
 
 ```bash

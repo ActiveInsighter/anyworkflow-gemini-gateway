@@ -26,7 +26,18 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - name: Deploy to Cloudflare Workers
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        env:
+          ACTIONS_TOKEN: ${{ secrets.ACTIONS_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          if [[ -z "$ACTIONS_TOKEN" ]]; then
+            npm run deploy
+            exit
+          fi
+
+          secrets_file="$(mktemp "$RUNNER_TEMP/gemini-gateway.XXXXXXXX.json")"
+          trap 'rm -f "$secrets_file"' EXIT
+          node -e 'process.stdout.write(JSON.stringify({ GITHUB_ACTIONS_TOKEN: process.env.ACTIONS_TOKEN }))' > "$secrets_file"
+          npm run deploy -- --secrets-file "$secrets_file"
