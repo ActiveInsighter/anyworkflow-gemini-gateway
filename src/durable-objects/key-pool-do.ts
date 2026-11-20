@@ -41,6 +41,8 @@ type KeyRow = {
 
 export class KeyPoolDO extends DurableObject<Env> {
   private initialized = false;
+  private cachedEnvSignature: string | null = null;
+  private cachedEntries: Array<{ key: string; keyHash: string; bucketId: string; index: number }> = [];
 
   private ensureSchema(): void {
     if (this.initialized) return;
@@ -67,6 +69,11 @@ export class KeyPoolDO extends DurableObject<Env> {
 
   private async syncKeysFromEnv(): Promise<Array<{ key: string; keyHash: string; bucketId: string; index: number }>> {
     this.ensureSchema();
+    const signature = `${this.env.GEMINI_API_KEYS ?? ''}\u0000${this.env.GEMINI_KEY_GROUPS ?? ''}`;
+    if (this.cachedEnvSignature === signature && this.cachedEntries.length > 0) {
+      return this.cachedEntries;
+    }
+
     const keys = parseApiKeys(this.env.GEMINI_API_KEYS);
     const groups = parseKeyGroups(keys.length, this.env.GEMINI_KEY_GROUPS);
     const entries: Array<{ key: string; keyHash: string; bucketId: string; index: number }> = [];
@@ -85,6 +92,8 @@ export class KeyPoolDO extends DurableObject<Env> {
         i,
       );
     }
+    this.cachedEnvSignature = signature;
+    this.cachedEntries = entries;
     return entries;
   }
 
@@ -218,6 +227,7 @@ export class KeyPoolDO extends DurableObject<Env> {
       bucketId: chosen.bucket_id,
       keyHash: chosen.key_hash,
       waitMs,
+      needsSuccessReport: chosen.consecutive_429 > 0 || chosen.cooldown_until > 0,
     };
   }
 

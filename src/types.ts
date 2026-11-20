@@ -28,6 +28,7 @@ export interface KeyLease {
   bucketId: string;
   keyHash: string;
   waitMs: number;
+  needsSuccessReport?: boolean;
 }
 
 export interface KeyReportInput {
@@ -48,10 +49,16 @@ export interface AgentDispatchRequest {
   inputs?: Record<string, string>;
 }
 
+export interface DecisionMessageInput {
+  role: string;
+  text: string;
+}
+
 export interface DecisionRequest {
   model?: string;
   systemPrompt?: string;
   prompt: string;
+  messages?: DecisionMessageInput[];
   schema?: Record<string, unknown>;
   thinkingLevel?: string;
   temperature?: number;

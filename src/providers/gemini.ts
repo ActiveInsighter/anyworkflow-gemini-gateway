@@ -50,6 +50,7 @@ export interface GeminiCallOptions {
   streamSse?: boolean;
   maxAttempts?: number;
   overrideApiKey?: string;
+  ctx?: ExecutionContext;
 }
 
 /**
@@ -90,8 +91,14 @@ export async function callGeminiUpstream(env: Env, opts: GeminiCallOptions): Pro
     });
 
     if (upstream.ok) {
-      // Report success asynchronously
-      await reportApiKeyOutcome(env, lease.keyHash, upstream.status);
+      if (lease.needsSuccessReport) {
+        const reportPromise = reportApiKeyOutcome(env, lease.keyHash, upstream.status).catch(() => {});
+        if (opts.ctx) {
+          opts.ctx.waitUntil(reportPromise);
+        } else {
+          await reportPromise;
+        }
+      }
       return upstream;
     }
 
@@ -104,7 +111,12 @@ export async function callGeminiUpstream(env: Env, opts: GeminiCallOptions): Pro
       errorBody = rawText;
     }
 
-    await reportApiKeyOutcome(env, lease.keyHash, upstream.status, retryAfter, errorBody);
+    const reportPromise = reportApiKeyOutcome(env, lease.keyHash, upstream.status, retryAfter, errorBody).catch(() => {});
+    if (opts.ctx) {
+      opts.ctx.waitUntil(reportPromise);
+    } else {
+      await reportPromise;
+    }
 
     lastResponse = new Response(rawText, {
       status: upstream.status,

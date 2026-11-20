@@ -3,7 +3,7 @@ import { KeyPoolDO } from './durable-objects/key-pool-do.ts';
 import { SchedulerDO } from './durable-objects/scheduler-do.ts';
 import { executeAgentDispatch, queryAgentDispatchStatus } from './executors/agent.ts';
 import { executeGeminiNativeChat, executeOpenAICompatChat } from './executors/chat.ts';
-import { executeDecisionModel } from './executors/decision.ts';
+import { executeDecisionModel, resolveDecisionModelId } from './executors/decision.ts';
 import { listGeminiModels } from './providers/gemini.ts';
 import type { OpenAIChatRequest } from './providers/openai-compat.ts';
 import { classifyModel } from './router/classifier.ts';
@@ -32,7 +32,7 @@ function keyPoolStub(env: Env): DurableObjectStub {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     if (request.method === 'OPTIONS') {
       return corsPreflight();
     }
@@ -107,7 +107,7 @@ export default {
       if (request.method === 'POST' && geminiMatch) {
         const model = decodeURIComponent(geminiMatch[1]!);
         const action = geminiMatch[2] as 'generateContent' | 'streamGenerateContent';
-        const body = await request.json().catch(() => null);
+        const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
         if (!body) return jsonError(400, 'Invalid JSON body');
 
         const category = classifyModel(model);
@@ -118,8 +118,17 @@ export default {
           });
         }
 
+        const effectiveModel = category === 'decision' ? resolveDecisionModelId(model, env) : model;
+        if (category === 'decision') {
+          const genCfg = ((body.generationConfig as Record<string, unknown> | undefined) ?? {});
+          if (!genCfg.responseMimeType) {
+            genCfg.responseMimeType = 'application/json';
+          }
+          body.generationConfig = genCfg;
+        }
+
         const streamSse = url.searchParams.get('alt') !== 'json';
-        return await executeGeminiNativeChat(env, model, action, body, streamSse, callerKey);
+        return await executeGeminiNativeChat(env, effectiveModel, action, body, streamSse, callerKey, ctx);
       }
 
       // 5. OpenAI-Compatible API (/v1/models, /v1/chat/completions)
@@ -156,7 +165,12 @@ export default {
           });
         }
 
-        return await executeOpenAICompatChat(env, body, callerKey);
+        const effectiveBody =
+          category === 'decision'
+            ? { ...body, model: resolveDecisionModelId(body.model, env) }
+            : body;
+
+        return await executeOpenAICompatChat(env, effectiveBody, callerKey, ctx);
       }
 
       // 6. Class 1: Explicit Agent Dispatch API (triggers GitHub Actions)
@@ -178,7 +192,7 @@ export default {
         if (!body || typeof body.prompt !== 'string' || !body.prompt.trim()) {
           return jsonError(400, 'prompt is required');
         }
-        const result = await executeDecisionModel(env, body, callerKey);
+        const result = await executeDecisionModel(env, body, callerKey, ctx);
         return Response.json(result.data, {
           status: result.status,
           headers: { 'access-control-allow-origin': '*' },

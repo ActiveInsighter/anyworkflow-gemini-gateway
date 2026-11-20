@@ -22,6 +22,7 @@ export async function executeGeminiNativeChat(
   body: unknown,
   streamSse: boolean,
   overrideApiKey?: string,
+  ctx?: ExecutionContext,
 ): Promise<Response> {
   const upstream = await callGeminiUpstream(env, {
     model,
@@ -29,6 +30,7 @@ export async function executeGeminiNativeChat(
     body,
     streamSse,
     overrideApiKey,
+    ctx,
   });
 
   const headers = new Headers();
@@ -53,6 +55,7 @@ export async function executeOpenAICompatChat(
   env: Env,
   body: OpenAIChatRequest,
   overrideApiKey?: string,
+  ctx?: ExecutionContext,
 ): Promise<Response> {
   const model = body.model.replace(/^models\//i, '');
   const stream = body.stream === true;
@@ -64,6 +67,7 @@ export async function executeOpenAICompatChat(
     body: geminiPayload,
     streamSse: true,
     overrideApiKey,
+    ctx,
   });
 
   if (!upstream.ok) {
