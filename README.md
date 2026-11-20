@@ -33,7 +33,7 @@
 
 ### 3. 专用端点
 - `POST /v1/agent/dispatch` / `GET /v1/agent/runs/:requestId`：手动派发与查询 Agent Action 任务
-- `POST /v1/decision`：结构化 JSON 决策调用
+- `POST /v1/decision`：结构化 JSON 决策调用。别名 `gemini-decision` 默认使用 `gemini-3.5-flash-lite`，可用 `DEFAULT_DECISION_MODEL` 配置。
 - `GET /healthz`：健康检查
 
 ### 4. 管理端点（需 `ADMIN_AUTH_TOKEN` 或 `GATEWAY_AUTH_TOKEN`）

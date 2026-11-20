@@ -6,7 +6,7 @@ const DECISION_ALIAS_RE = /^(?:gemini[-_.]?)?decision$/i;
 export function resolveDecisionModelId(requestedModel: string | undefined, env: Env): string {
   const clean = (typeof requestedModel === 'string' ? requestedModel : '').trim().replace(/^models\//i, '');
   if (!clean || DECISION_ALIAS_RE.test(clean)) {
-    return env.DEFAULT_DECISION_MODEL?.trim().replace(/^models\//i, '') || 'gemini-2.5-flash';
+    return env.DEFAULT_DECISION_MODEL?.trim().replace(/^models\//i, '') || 'gemini-3.5-flash-lite';
   }
   return clean;
 }
@@ -19,9 +19,9 @@ function buildDecisionThinkingConfig(model: string, thinkingLevel?: string): Rec
   if (isGemini3) {
     const requested = level === 'OFF' || level === 'NONE' ? 'MINIMAL' : level;
     if (!['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'].includes(requested)) return undefined;
-    const isPro = /^gemini-3(?:\.\d+)?-pro/i.test(model);
-    const thinkingLevel = isPro && requested === 'MINIMAL' ? 'LOW'
-      : isPro && requested === 'MEDIUM' ? 'HIGH' : requested;
+    const requiresLowOrAbove = /^gemini-3(?:\.8|(?:\.\d+)?-pro)/i.test(model);
+    const thinkingLevel = requiresLowOrAbove && requested === 'MINIMAL' ? 'LOW'
+      : /^gemini-3-pro/i.test(model) && requested === 'MEDIUM' ? 'HIGH' : requested;
     return { thinkingLevel };
   }
 
