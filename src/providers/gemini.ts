@@ -1,4 +1,4 @@
-import type { Env, KeyLease } from '../types.ts';
+import type { Env, KeyLease, KeyReportInput } from '../types.ts';
 
 function keyPoolStub(env: Env): DurableObjectStub {
   const id = env.KEY_POOL.idFromName('global-gemini-key-pool');
@@ -18,18 +18,17 @@ export async function leaseApiKey(env: Env, excludeHashes: string[] = []): Promi
   return (await res.json()) as KeyLease;
 }
 
-export async function reportApiKeyOutcome(
-  env: Env,
-  keyHash: string,
-  status: number,
-  retryAfterSeconds?: number,
-  errorPayload?: unknown,
-): Promise<void> {
-  await keyPoolStub(env).fetch('https://key-pool/report', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ keyHash, status, retryAfterSeconds, errorPayload }),
-  });
+async function reportApiKeyOutcome(env: Env, report: KeyReportInput): Promise<void> {
+  try {
+    const response = await keyPoolStub(env).fetch('https://key-pool/report', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(report),
+    });
+    if (!response.ok) console.warn('Gemini key outcome report failed', response.status);
+  } catch {
+    console.warn('Gemini key outcome report could not reach the key pool');
+  }
 }
 
 function parseRetryAfter(headerValue: string | null): number | undefined {
@@ -78,7 +77,13 @@ export async function callGeminiUpstream(env: Env, opts: GeminiCallOptions): Pro
   let lastResponse: Response | null = null;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const lease = await leaseApiKey(env, triedHashes);
+    let lease: KeyLease;
+    try {
+      lease = await leaseApiKey(env, triedHashes);
+    } catch (error) {
+      if (lastResponse) return lastResponse;
+      throw error;
+    }
     triedHashes.push(lease.keyHash);
 
     const upstream = await fetch(targetUrl, {
@@ -91,8 +96,12 @@ export async function callGeminiUpstream(env: Env, opts: GeminiCallOptions): Pro
     });
 
     if (upstream.ok) {
-      if (lease.needsSuccessReport) {
-        const reportPromise = reportApiKeyOutcome(env, lease.keyHash, upstream.status).catch(() => {});
+      if (lease.successResetErrorCount !== undefined) {
+        const reportPromise = reportApiKeyOutcome(env, {
+          keyHash: lease.keyHash,
+          status: upstream.status,
+          successResetErrorCount: lease.successResetErrorCount,
+        });
         if (opts.ctx) {
           opts.ctx.waitUntil(reportPromise);
         } else {
@@ -111,12 +120,10 @@ export async function callGeminiUpstream(env: Env, opts: GeminiCallOptions): Pro
       errorBody = rawText;
     }
 
-    const reportPromise = reportApiKeyOutcome(env, lease.keyHash, upstream.status, retryAfter, errorBody).catch(() => {});
-    if (opts.ctx) {
-      opts.ctx.waitUntil(reportPromise);
-    } else {
-      await reportPromise;
-    }
+    // A retry must see the updated bucket cooldown before leasing another key.
+    await reportApiKeyOutcome(env, {
+      keyHash: lease.keyHash, status: upstream.status, retryAfterSeconds: retryAfter, errorPayload: errorBody,
+    });
 
     lastResponse = new Response(rawText, {
       status: upstream.status,

@@ -192,6 +192,9 @@ export default {
         if (!body || typeof body.prompt !== 'string' || !body.prompt.trim()) {
           return jsonError(400, 'prompt is required');
         }
+        if (body.schema != null && (typeof body.schema !== 'object' || Array.isArray(body.schema))) {
+          return jsonError(400, 'schema must be a JSON object');
+        }
         const result = await executeDecisionModel(env, body, callerKey, ctx);
         return Response.json(result.data, {
           status: result.status,

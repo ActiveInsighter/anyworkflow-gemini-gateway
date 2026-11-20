@@ -28,13 +28,14 @@ export interface KeyLease {
   bucketId: string;
   keyHash: string;
   waitMs: number;
-  needsSuccessReport?: boolean;
+  successResetErrorCount?: number;
 }
 
 export interface KeyReportInput {
   keyHash: string;
   status: number;
   retryAfterSeconds?: number;
+  successResetErrorCount?: number;
   errorPayload?: unknown;
 }
 
