@@ -39,8 +39,11 @@ type KeyRow = {
   total_errors: number;
 };
 
+type KeyEntry = { key: string; keyHash: string; bucketId: string; index: number };
+
 export class KeyPoolDO extends DurableObject<Env> {
   private initialized = false;
+  private entries: Promise<Map<string, KeyEntry>> | undefined;
 
   private ensureSchema(): void {
     if (this.initialized) return;
@@ -65,27 +68,38 @@ export class KeyPoolDO extends DurableObject<Env> {
     this.initialized = true;
   }
 
-  private async syncKeysFromEnv(): Promise<Array<{ key: string; keyHash: string; bucketId: string; index: number }>> {
+  private syncKeysFromEnv(): Promise<Map<string, KeyEntry>> {
+    this.entries ??= this.loadKeysFromEnv().catch((error) => {
+      this.entries = undefined;
+      throw error;
+    });
+    return this.entries;
+  }
+
+  private async loadKeysFromEnv(): Promise<Map<string, KeyEntry>> {
     this.ensureSchema();
     const keys = parseApiKeys(this.env.GEMINI_API_KEYS);
     const groups = parseKeyGroups(keys.length, this.env.GEMINI_KEY_GROUPS);
-    const entries: Array<{ key: string; keyHash: string; bucketId: string; index: number }> = [];
-
-    for (let i = 0; i < keys.length; i++) {
-      const key = keys[i]!;
-      const bucketId = groups[i] ?? `key:${i}`;
-      const keyHash = await sha256Hex(key);
-      entries.push({ key, keyHash, bucketId, index: i });
-      this.ctx.storage.sql.exec(
-        `INSERT INTO key_state (key_hash, bucket_id, key_index)
-         VALUES (?, ?, ?)
-         ON CONFLICT(key_hash) DO UPDATE SET bucket_id = excluded.bucket_id, key_index = excluded.key_index`,
-        keyHash,
-        bucketId,
-        i,
-      );
-    }
-    return entries;
+    const entries = await Promise.all(keys.map(async (key, index) => ({
+      key,
+      keyHash: await sha256Hex(key),
+      bucketId: groups[index] ?? `key:${index}`,
+      index,
+    })));
+    this.ctx.storage.transactionSync(() => {
+      for (const entry of entries) {
+        this.ctx.storage.sql.exec(
+          `INSERT INTO key_state (key_hash, bucket_id, key_index)
+           VALUES (?, ?, ?)
+           ON CONFLICT(key_hash) DO UPDATE SET bucket_id = excluded.bucket_id, key_index = excluded.key_index
+           WHERE bucket_id != excluded.bucket_id OR key_index != excluded.key_index`,
+          entry.keyHash,
+          entry.bucketId,
+          entry.index,
+        );
+      }
+    });
+    return new Map(entries.map((entry) => [entry.keyHash, entry]));
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -121,8 +135,8 @@ export class KeyPoolDO extends DurableObject<Env> {
   }
 
   private async leaseKey(excludeHashes: Set<string>): Promise<KeyLease> {
-    const entries = await this.syncKeysFromEnv();
-    if (entries.length === 0) {
+    const entryByHash = await this.syncKeysFromEnv();
+    if (entryByHash.size === 0) {
       throw new Error('GEMINI_API_KEYS is not configured');
     }
 
@@ -131,7 +145,6 @@ export class KeyPoolDO extends DurableObject<Env> {
     const rpmLimit = Math.max(1, Number.parseInt(this.env.KEY_POOL_RPM_PER_KEY || '15', 10) || 15);
     const rpdLimit = Math.max(1, Number.parseInt(this.env.KEY_POOL_RPD_PER_KEY || '1500', 10) || 1500);
 
-    const entryByHash = new Map(entries.map((e) => [e.keyHash, e]));
     const rows = this.ctx.storage.sql
       .exec<KeyRow>(`SELECT * FROM key_state`)
       .toArray()
@@ -218,6 +231,7 @@ export class KeyPoolDO extends DurableObject<Env> {
       bucketId: chosen.bucket_id,
       keyHash: chosen.key_hash,
       waitMs,
+      successResetErrorCount: chosen.cooldown_until > 0 ? chosen.total_errors : undefined,
     };
   }
 
@@ -228,8 +242,10 @@ export class KeyPoolDO extends DurableObject<Env> {
 
     if (input.status >= 200 && input.status < 300) {
       this.ctx.storage.sql.exec(
-        `UPDATE key_state SET consecutive_429 = 0, cooldown_until = 0 WHERE key_hash = ?`,
+        `UPDATE key_state SET consecutive_429 = 0, cooldown_until = 0
+         WHERE key_hash = ? AND total_errors = ?`,
         input.keyHash,
+        input.successResetErrorCount ?? null,
       );
       return;
     }
@@ -271,10 +287,9 @@ export class KeyPoolDO extends DurableObject<Env> {
   }
 
   private async getStatus(): Promise<unknown> {
-    const entries = await this.syncKeysFromEnv();
+    const entryByHash = await this.syncKeysFromEnv();
     const now = Date.now();
     const today = utcDayKey(now);
-    const entryByHash = new Map(entries.map((e) => [e.keyHash, e]));
     const rows = this.ctx.storage.sql
       .exec<KeyRow>(`SELECT * FROM key_state ORDER BY key_index ASC`)
       .toArray()

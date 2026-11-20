@@ -28,12 +28,14 @@ export interface KeyLease {
   bucketId: string;
   keyHash: string;
   waitMs: number;
+  successResetErrorCount?: number;
 }
 
 export interface KeyReportInput {
   keyHash: string;
   status: number;
   retryAfterSeconds?: number;
+  successResetErrorCount?: number;
   errorPayload?: unknown;
 }
 
@@ -48,10 +50,16 @@ export interface AgentDispatchRequest {
   inputs?: Record<string, string>;
 }
 
+export interface DecisionMessageInput {
+  role: string;
+  text: string;
+}
+
 export interface DecisionRequest {
   model?: string;
   systemPrompt?: string;
   prompt: string;
+  messages?: DecisionMessageInput[];
   schema?: Record<string, unknown>;
   thinkingLevel?: string;
   temperature?: number;
