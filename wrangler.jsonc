@@ -37,7 +37,7 @@
     "GITHUB_AGENT_WORKFLOW": "gemini-text.yml",
     "GITHUB_AGENT_REF": "main",
     "POCKETBASE_URL": "https://pb.any1.tech",
-    "DEFAULT_DECISION_MODEL": "gemini-2.5-flash",
+    "DEFAULT_DECISION_MODEL": "gemini-3.5-flash-lite",
     "KEY_POOL_RPM_PER_KEY": "15",
     "KEY_POOL_RPD_PER_KEY": "1500"
   }

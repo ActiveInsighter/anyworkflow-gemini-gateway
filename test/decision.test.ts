@@ -15,6 +15,11 @@ test('resolveDecisionModelId maps gemini-decision alias to DEFAULT_DECISION_MODE
   assert.equal(resolveDecisionModelId(undefined, baseEnv), 'gemini-2.5-flash');
 });
 
+test('Decision defaults to Gemini 3.5 Flash-Lite without an override', () => {
+  const env = { DEFAULT_DECISION_MODEL: ' ' } as Env;
+  assert.equal(resolveDecisionModelId('gemini-decision', env), 'gemini-3.5-flash-lite');
+});
+
 test('resolveDecisionModelId preserves explicit real Gemini model IDs', () => {
   assert.equal(resolveDecisionModelId('gemini-2.5-pro', baseEnv), 'gemini-2.5-pro');
   assert.equal(resolveDecisionModelId('models/gemini-3-flash-preview', baseEnv), 'gemini-3-flash-preview');
